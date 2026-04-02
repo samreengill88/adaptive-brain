@@ -54,7 +54,15 @@ def create_study_session(session: StudySessionCreate):
         "preferred_outputs": session.preferred_outputs,
         "file_path": session.file_path,
         "status": "uploaded" if session.file_path else "created",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
+
+        # generated text fields
+        "extracted_text": "",
+        "generated_summary": "",
+        "generated_flashcards": "",
+        "generated_quiz": "",
+
+        "status": "uploaded" if session.file_path else "created",
     })
     
     return {
@@ -80,6 +88,50 @@ async def extract_text(file: UploadFile = File(...)):
         "filename": file.filename,
         "extracted_text": extracted_text
     }
+
+# to extract text
+@app.post("/study-sessions/{session_id}/extract")
+async def extract_and_save_text(session_id: str, file: UploadFile = File(...)):
+
+    #  check sessoion exists
+    doc_ref = db.collection("study_sessions").document(session_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+         raise HTTPException(status_code=404, detail="Study session not found.")
+    
+    # check uploaded file is a pdf
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    # read file and extract text
+    contents = await file.read()
+    extracted_text = extact_text_from_pdf_bytes(contents)
+
+    if not extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail="No extractable text found in this PDF."
+        )
+    
+    # update study session in firestore
+    doc_ref.update({
+        "extracted_text": extracted_text,
+        "status": "text_extracted",
+    })
+
+    return{
+        "message": "Text extracted and saved successfully",
+        "session_id": session_id,
+        "extracted_text": extracted_text
+    }
+
+
+
+
+
+
+
 
 
 # @app.get("/test-firestore")

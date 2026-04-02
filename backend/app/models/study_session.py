@@ -7,4 +7,5 @@ class StudySessionCreate(BaseModel):
     original_text: str
     selected_mode: str
     preferred_outputs: Optional[List[str]] = []
-    file_path: Optional[str] = None
+    file_path: Optional[str] = None,
+    # extracted_text
