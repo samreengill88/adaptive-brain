@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware # to connect frontend with backend
 from app.firebase import db, bucket
 from app.models.study_session import StudySessionCreate
 from app.services.text_extraction import extact_text_from_pdf_bytes
@@ -7,6 +8,14 @@ import uuid
 from app.services.generator import generate_study_content
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
@@ -137,8 +146,8 @@ def generate_content(session_id: str):
         raise HTTPException(status_code=404, detail="Study session not found.")
 
     session_data = doc.to_dict()
-
     text = session_data.get("extracted_text") or session_data.get("original_text", "")
+
     if not text:
         raise HTTPException(
             status_code=400,
@@ -148,7 +157,10 @@ def generate_content(session_id: str):
     mode = session_data.get("selected_mode", "default")
     preferred_outputs = session_data.get("preferred_outputs", [])
 
-    generated = generate_study_content(text, mode, preferred_outputs)
+    try:
+        generated = generate_study_content(text, mode, preferred_outputs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
     doc_ref.update({
         "generated_summary": generated.get("summary", ""),
