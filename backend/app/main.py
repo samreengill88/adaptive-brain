@@ -4,6 +4,7 @@ from app.models.study_session import StudySessionCreate
 from app.services.text_extraction import extact_text_from_pdf_bytes
 from datetime import datetime, timezone
 import uuid
+from app.services.generator import generate_study_content
 
 app = FastAPI()
 
@@ -127,10 +128,55 @@ async def extract_and_save_text(session_id: str, file: UploadFile = File(...)):
     }
 
 
+@app.post("/study-sessions/{session_id}/generate")
+def generate_content(session_id: str):
+    doc_ref = db.collection("study_sessions").document(session_id)
+    doc = doc_ref.get()
 
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Study session not found.")
 
+    session_data = doc.to_dict()
 
+    text = session_data.get("extracted_text") or session_data.get("original_text", "")
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="No text available. Extract text or provide original_text first."
+        )
 
+    mode = session_data.get("selected_mode", "default")
+    preferred_outputs = session_data.get("preferred_outputs", [])
+
+    generated = generate_study_content(text, mode, preferred_outputs)
+
+    doc_ref.update({
+        "generated_summary": generated.get("summary", ""),
+        "generated_flashcards": generated.get("flashcards", []),
+        "generated_quiz": generated.get("quiz", []),
+        "generated_simplified_text": generated.get("simplified_text", ""),
+        "status": "generated",
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    })
+
+    return {
+        "message": "Study content generated successfully",
+        "session_id": session_id,
+        "generated_content": generated
+    }
+
+# fetch study session for frontend
+@app.get("/study-sessions/{session_id}")
+def get_study_session(session_id: str):
+    doc = db.collection("study_sessions").document(session_id).get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Study session not found.")
+
+    return {
+        "session_id": session_id,
+        "data": doc.to_dict()
+    }
 
 
 
